@@ -1,11 +1,6 @@
 /**
  * LLM Security Testing Framework — Dashboard JavaScript
  * Connects frontend dashboard to Flask backend (api.py)
- * Handles: config form, payload selection, scan execution,
- *          real-time progress, results display, report generation
- *
- * Flask backend expected at: http://localhost:5000
- * Change BACKEND_URL below after deploying to Render/Railway.
  */
 
 const BACKEND_URL = 'https://ethical-hacking-framework-tests.onrender.com';
@@ -15,10 +10,10 @@ const BACKEND_URL = 'https://ethical-hacking-framework-tests.onrender.com';
 ───────────────────────────────────────────── */
 const state = {
   config: {
-    provider: 'Mistral AI',
+    provider: 'groq', // Default to Groq
     apiKey: '',
     baseUrl: '',
-    model: 'gpt-4o',
+    model: 'llama-3.3-70b-versatile', // Updated default model
     systemPrompt: '',
     maxTokens: 1000,
     temperature: 0.7,
@@ -38,13 +33,13 @@ const state = {
 };
 
 /* ─────────────────────────────────────────────
-   UPDATED PROVIDER → MODEL MAP
+   UPDATED PROVIDER → MODEL MAP (April 2026)
 ───────────────────────────────────────────── */
 const PROVIDER_MODELS = {
   openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
   anthropic: ['claude-3-5-sonnet-latest', 'claude-3-opus-latest', 'claude-3-haiku-20240307'],
   gemini:    ['gemini-1.5-pro', 'gemini-1.5-flash'],
-  groq:      ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+  groq:      ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
   mistral:   ['mistral-large-latest', 'pixtral-12b-2409'],
   custom:    ['custom-model'],
 };
@@ -86,14 +81,11 @@ function updateSessionStats() {
   if (el('stat-risk'))       el('stat-risk').textContent       = s.riskScore ?? '—';
   if (el('stat-duration'))   el('stat-duration').textContent   = s.duration  ?? '—';
 
-  // sidebar category counts
-  state.results.forEach(() => {});
   const catCounts = {};
   state.results.forEach(r => {
     catCounts[r.category] = (catCounts[r.category] || 0) + 1;
   });
   Object.entries(catCounts).forEach(([cat, n]) => {
-    const badge = $(`.nav-item[data-section="run"] .badge`); // generic fallback
     const catBadge = $(`.nav-cat[data-cat="${cat}"] .badge`);
     if (catBadge) catBadge.textContent = n;
   });
@@ -103,7 +95,6 @@ function updateSessionStats() {
    CONFIG FORM
 ───────────────────────────────────────────── */
 function initConfigForm() {
-  // Provider change → update model dropdown
   const providerSel = $('#provider-select');
   const modelSel    = $('#model-select');
   const baseUrlRow  = $('#base-url-row');
@@ -122,7 +113,6 @@ function initConfigForm() {
     modelSel.addEventListener('change', () => { state.config.model = modelSel.value; });
   }
 
-  // Toggle API key visibility
   if (toggleKey && apiKeyInput) {
     toggleKey.addEventListener('click', () => {
       apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
@@ -130,16 +120,16 @@ function initConfigForm() {
     });
   }
 
-  // Sync all config inputs
+  // FIXED: Added proper numeric casting for backend compatibility
   const bindings = [
     ['#api-key-input',        'apiKey',           'input'],
     ['#base-url-input',       'baseUrl',          'input'],
     ['#system-prompt-input',  'systemPrompt',     'input'],
-    ['#max-tokens-input',     'maxTokens',        'input',  Number],
-    ['#temperature-input',    'temperature',      'input',  Number],
-    ['#tests-per-cat-input',  'testsPerCategory', 'input',  Number],
-    ['#delay-input',          'delayMs',          'input',  Number],
-    ['#timeout-input',        'timeoutS',         'input',  Number],
+    ['#max-tokens-input',     'maxTokens',        'input', (v) => parseInt(v) || 1000],
+    ['#temperature-input',    'temperature',      'input', (v) => parseFloat(v) || 0.7],
+    ['#tests-per-cat-input',  'testsPerCategory', 'input', (v) => parseInt(v) || 10],
+    ['#delay-input',          'delayMs',          'input', (v) => parseInt(v) || 500],
+    ['#timeout-input',        'timeoutS',         'input', (v) => parseInt(v) || 60],
     ['#stop-on-critical',     'stopOnCritical',   'change', Boolean, true],
   ];
 
@@ -152,7 +142,6 @@ function initConfigForm() {
     });
   });
 
-  // Scan profile radio buttons
   $$('input[name="scan-profile"]').forEach(radio => {
     radio.addEventListener('change', () => {
       state.config.scanProfile = radio.value;
@@ -160,7 +149,6 @@ function initConfigForm() {
     });
   });
 
-  // Test Connection button
   const testConnBtn = $('#test-connection-btn');
   if (testConnBtn) {
     testConnBtn.addEventListener('click', testConnection);
@@ -177,7 +165,7 @@ async function testConnection() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         provider:   state.config.provider,
-        api_key:    state.config.apiKey,
+        api_key:    state.config.apiKey.trim(),
         model:      state.config.model,
         base_url:   state.config.baseUrl,
       }),
@@ -191,7 +179,7 @@ async function testConnection() {
       updateTopbarStatus('error', 'Connection failed');
     }
   } catch (err) {
-    log('ERR', `Cannot reach backend at ${BACKEND_URL} — is Flask running? (${err.message})`);
+    log('ERR', `Cannot reach backend at ${BACKEND_URL} — instance may be spinning up. (${err.message})`);
     updateTopbarStatus('error', 'Backend offline');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '⟳ Test Connection'; }
@@ -227,7 +215,6 @@ async function loadPayloads() {
     const data = await res.json();
     renderPayloadSuite(data.payloads || []);
   } catch {
-    // Backend offline — show static placeholder payloads
     renderPayloadSuite(getDefaultPayloads());
   }
 }
@@ -246,7 +233,6 @@ function renderPayloadSuite(payloads) {
   const container = $('#payload-list');
   if (!container) return;
 
-  // Group by category
   const grouped = {};
   payloads.forEach(p => {
     if (!grouped[p.category]) grouped[p.category] = [];
@@ -274,7 +260,6 @@ function renderPayloadSuite(payloads) {
     </div>
   `).join('');
 
-  // Select/deselect all in category
   $$('.cat-check-all').forEach(cb => {
     cb.addEventListener('change', () => {
       const cat = cb.dataset.cat;
@@ -286,7 +271,6 @@ function renderPayloadSuite(payloads) {
     });
   });
 
-  // Individual checkboxes
   $$('.payload-cb').forEach(cb => {
     cb.addEventListener('change', () => {
       cb.checked ? state.selectedPayloads.add(cb.value) : state.selectedPayloads.delete(cb.value);
@@ -308,18 +292,19 @@ function updatePayloadCount() {
 }
 
 function updatePayloadSuiteFromProfile(profile) {
+  state.selectedPayloads.clear();
   const map = {
     prompt:  ['prompt_injection'],
-    api:     ['api_attacks'],
-    image:   ['image_injection'],
-    all:     CATEGORIES,
-    custom:  [],
+    api:      ['api_attacks'],
+    image:    ['image_injection'],
+    all:      CATEGORIES,
+    custom:   [],
   };
   const cats = map[profile] || CATEGORIES;
   $$('.payload-cb').forEach(cb => {
     const shouldCheck = cats.includes(cb.dataset.cat);
     cb.checked = shouldCheck;
-    shouldCheck ? state.selectedPayloads.add(cb.value) : state.selectedPayloads.delete(cb.value);
+    if (shouldCheck) state.selectedPayloads.add(cb.value);
   });
   $$('.cat-check-all').forEach(cb => {
     cb.checked = cats.includes(cb.dataset.cat);
@@ -342,7 +327,6 @@ function initPayloadControls() {
     state.selectedPayloads.clear();
     updatePayloadCount();
   });
-  // Category filter tabs
   $$('.payload-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       $$('.payload-tab').forEach(t => t.classList.remove('active'));
@@ -374,18 +358,13 @@ async function startScan() {
     setNav('config');
     return;
   }
-  if (state.selectedPayloads.size === 0 && state.config.scanProfile === 'custom') {
-    log('WARN', 'No payloads selected. Go to Payload Suite and select tests.');
-    setNav('payloads');
-    return;
-  }
 
   state.scanRunning = true;
   state.results = [];
   state.scanStartTime = Date.now();
   updateScanUI(true);
   updateTopbarStatus('scanning', 'Scan running…');
-  log('RUN', `Starting scan — profile: ${state.config.scanProfile} · provider: ${state.config.provider}`);
+  log('RUN', `Starting scan — model: ${state.config.model}`);
 
   try {
     const res = await fetch(`${BACKEND_URL}/api/scan/start`, {
@@ -393,7 +372,7 @@ async function startScan() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         provider:           state.config.provider,
-        api_key:            state.config.apiKey,
+        api_key:            state.config.apiKey.trim(),
         model:              state.config.model,
         base_url:           state.config.baseUrl,
         system_prompt:      state.config.systemPrompt,
@@ -410,7 +389,7 @@ async function startScan() {
 
     const data = await res.json();
     if (!data.success) {
-      log('ERR', `Scan failed to start: ${data.error}`);
+      log('ERR', `Scan failed: ${data.error}`);
       scanFinished(false);
       return;
     }
@@ -418,7 +397,7 @@ async function startScan() {
     log('OK', `Scan started — scan_id: ${data.scan_id}`);
     startPolling(data.scan_id);
   } catch (err) {
-    log('ERR', `Cannot reach backend: ${err.message}. Is Flask running on ${BACKEND_URL}?`);
+    log('ERR', `Connection lost: ${err.message}`);
     scanFinished(false);
   }
 }
@@ -429,44 +408,38 @@ function startPolling(scanId) {
       const res  = await fetch(`${BACKEND_URL}/api/scan/status/${scanId}`);
       const data = await res.json();
       handleScanUpdate(data);
-      if (data.status === 'completed' || data.status === 'aborted' || data.status === 'error') {
+      if (['completed', 'aborted', 'error'].includes(data.status)) {
         clearInterval(state.pollInterval);
         scanFinished(data.status === 'completed');
       }
     } catch (err) {
-      log('WARN', `Poll error: ${err.message}`);
+      log('WARN', `Polling...`);
     }
   }, 1500);
 }
 
 function handleScanUpdate(data) {
-  // Progress bar
   const pct = data.progress ?? 0;
   const progressBar = $('#progress-bar');
   const progressPct = $('#progress-pct');
   if (progressBar) progressBar.style.width = `${pct}%`;
   if (progressPct) progressPct.textContent = `${Math.round(pct)}%`;
 
-  // Live counters
   setCounter('#counter-total',    data.total     ?? 0);
   setCounter('#counter-complete', data.completed ?? 0);
   setCounter('#counter-vulns',    data.vulnerabilities ?? 0);
   setCounter('#counter-risk',     data.risk_score != null ? data.risk_score.toFixed(1) : '—');
 
-  // New results
   if (data.new_results?.length) {
     data.new_results.forEach(r => {
       state.results.push(r);
-      log(r.vulnerable ? 'WARN' : 'OK',
-          `[${r.category}] ${r.test_name} — ${r.vulnerable ? '⚠ VULNERABLE' : 'PASSED'}`);
+      log(r.vulnerable ? 'WARN' : 'OK', `[${r.category}] ${r.test_name} — ${r.vulnerable ? '⚠ VULNERABLE' : 'PASSED'}`);
       appendResultRow(r);
     });
   }
 
-  // Log messages from backend
   data.log_messages?.forEach(m => log(m.level || 'INFO', m.message));
 
-  // Duration
   const elapsed = ((Date.now() - state.scanStartTime) / 1000).toFixed(0);
   state.sessionStats.duration = `${elapsed}s`;
   state.sessionStats.testsRun = data.completed ?? state.results.length;
@@ -485,7 +458,7 @@ async function abortScan() {
   try {
     await fetch(`${BACKEND_URL}/api/scan/abort`, { method: 'POST' });
     log('WARN', 'Scan abort requested.');
-  } catch { log('WARN', 'Could not reach backend to abort.'); }
+  } catch { log('WARN', 'Abort failed.'); }
   clearInterval(state.pollInterval);
   scanFinished(false);
 }
@@ -495,9 +468,8 @@ function scanFinished(success) {
   updateScanUI(false);
   updateTopbarStatus(success ? 'connected' : 'idle', success ? 'Scan complete' : 'Scan stopped');
   if (success) {
-    log('OK', `Scan complete — ${state.results.length} tests, ${state.results.filter(r=>r.vulnerable).length} vulnerabilities found.`);
+    log('OK', `Scan complete — ${state.results.length} tests finished.`);
     generateReport();
-    // Auto-navigate to results
     setTimeout(() => setNav('results'), 800);
   }
 }
@@ -508,9 +480,7 @@ function updateScanUI(running) {
   const scanBadge = $('#scan-status-badge');
   if (startBtn) startBtn.disabled = running;
   if (abortBtn) abortBtn.disabled = !running;
-  if (scanBadge) {
-    scanBadge.style.display = running ? 'flex' : 'none';
-  }
+  if (scanBadge) scanBadge.style.display = running ? 'flex' : 'none';
 }
 
 /* ─────────────────────────────────────────────
@@ -529,8 +499,6 @@ function initResultsFilter() {
 function appendResultRow(r) {
   const tbody = $('#results-tbody');
   if (!tbody) return;
-
-  // Remove empty state row if present
   $('#results-empty')?.remove();
 
   const sevColor = { critical:'var(--red)', high:'var(--amber)', medium:'var(--acc)', low:'var(--acc2)' };
@@ -566,13 +534,11 @@ function filterResults(filter) {
 function openResultModal(r) {
   const modal = $('#result-modal');
   if (!modal) return;
-
   $('#modal-attack-payload').textContent  = r.payload        || '—';
   $('#modal-llm-response').textContent    = r.response       || '—';
   $('#modal-evidence').textContent        = r.evidence       || '—';
   $('#modal-description').textContent     = r.description    || '—';
   $('#modal-mitigation').textContent      = r.mitigation     || '—';
-
   modal.style.display = 'flex';
 }
 
@@ -599,7 +565,6 @@ async function generateReport() {
     renderReport(data);
     log('OK', 'Security report generated.');
   } catch {
-    // Generate client-side report fallback
     const report = buildClientReport();
     state.report = report;
     renderReport(report);
@@ -609,7 +574,7 @@ async function generateReport() {
 function buildClientReport() {
   const vulns   = state.results.filter(r => r.vulnerable);
   const total   = state.results.length;
-  const risk    = vulns.length ? ((vulns.length / total) * 10).toFixed(1) : '0.0';
+  const risk    = total ? ((vulns.length / total) * 10).toFixed(1) : '0.0';
   const cats    = {};
   state.results.forEach(r => {
     if (!cats[r.category]) cats[r.category] = { total:0, vuln:0 };
@@ -647,19 +612,11 @@ function renderReport(report) {
 }
 
 function renderCategoryBreakdown(cats) {
-  return `
-    <div style="margin-top:16px">
-      ${Object.entries(cats).map(([cat, data]) => `
+  return `<div style="margin-top:16px">${Object.entries(cats).map(([cat, data]) => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
           <span style="color:var(--text2)">${CAT_LABELS[cat]||cat}</span>
-          <span>
-            <span style="color:var(--red)">${data.vuln} vuln</span>
-            <span style="color:var(--text2)"> / ${data.total} tests</span>
-          </span>
-        </div>
-      `).join('')}
-    </div>
-  `;
+          <span><span style="color:var(--red)">${data.vuln} vuln</span><span style="color:var(--text2)"> / ${data.total} tests</span></span>
+        </div>`).join('')}</div>`;
 }
 
 /* ─────────────────────────────────────────────
@@ -672,89 +629,35 @@ function initReportDownloads() {
 }
 
 function downloadReport(format) {
-  if (!state.report) { log('WARN', 'No report yet. Run a scan first.'); return; }
+  if (!state.report) { log('WARN', 'Run a scan first.'); return; }
   let content, mime, ext;
   if (format === 'json') {
     content = JSON.stringify(state.report, null, 2);
-    mime    = 'application/json';
-    ext     = 'json';
+    mime = 'application/json'; ext = 'json';
   } else if (format === 'html') {
     content = buildHtmlReport(state.report);
-    mime    = 'text/html';
-    ext     = 'html';
+    mime = 'text/html'; ext = 'html';
   } else {
     content = buildTxtReport(state.report);
-    mime    = 'text/plain';
-    ext     = 'txt';
+    mime = 'text/plain'; ext = 'txt';
   }
   const blob = new Blob([content], { type: mime });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `llm-vapt-report.${ext}`;
-  a.click();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `vapt-report.${ext}`; a.click();
   URL.revokeObjectURL(url);
 }
 
 function buildTxtReport(report) {
   const s = report.summary;
-  const lines = [
-    '═══════════════════════════════════════════',
-    '  LLM Security Testing Framework — VAPT Report',
-    '═══════════════════════════════════════════',
-    `Provider    : ${s.provider} / ${s.model}`,
-    `Total Tests : ${s.total_tests}`,
-    `Vulns Found : ${s.vulnerabilities}`,
-    `Risk Score  : ${s.risk_score} / 10`,
-    `Timestamp   : ${s.timestamp}`,
-    '',
-    '─── Results ─────────────────────────────',
-  ];
-  report.results?.forEach(r => {
-    lines.push(`[${r.vulnerable ? 'VULN' : 'PASS'}] ${r.category} › ${r.test_name} (${r.severity})`);
-    if (r.vulnerable && r.evidence) lines.push(`       Evidence: ${r.evidence}`);
-  });
+  const lines = ['VAPT Report', `Model: ${s.model}`, `Vulns: ${s.vulnerabilities}`, ''];
+  report.results?.forEach(r => lines.push(`[${r.vulnerable ? 'VULN' : 'PASS'}] ${r.test_name}`));
   return lines.join('\n');
 }
 
 function buildHtmlReport(report) {
   const s = report.summary;
-  return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<title>LLM VAPT Report</title>
-<style>
-  body{background:#050709;color:#c8d8e8;font-family:'Share Tech Mono',monospace;padding:40px;max-width:900px;margin:0 auto}
-  h1{color:#00ffb3;font-size:28px;margin-bottom:8px}
-  h2{color:#00c8ff;font-size:16px;margin:24px 0 12px;border-bottom:1px solid rgba(0,255,180,.12);padding-bottom:8px}
-  .meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px}
-  .meta-row{display:flex;justify-content:space-between;padding:8px 12px;background:rgba(0,255,180,.04);border:1px solid rgba(0,255,180,.1)}
-  .vuln{color:#ff3c5a} .pass{color:#00ffb3} .high{color:#ffb020}
-  table{width:100%;border-collapse:collapse}
-  th{text-align:left;padding:8px;background:rgba(0,255,180,.08);color:#00ffb3;font-size:11px;letter-spacing:.1em}
-  td{padding:8px;border-bottom:1px solid rgba(0,255,180,.06);font-size:12px}
-</style></head><body>
-<h1>LLM Security Testing Framework</h1>
-<p style="color:#5a7a8a">VAPT Report · ${new Date(s.timestamp).toLocaleString()}</p>
-<h2>Executive Summary</h2>
-<div class="meta">
-  <div class="meta-row"><span>Provider / Model</span><span style="color:#00ffb3">${esc(s.provider)} / ${esc(s.model)}</span></div>
-  <div class="meta-row"><span>Total Tests</span><span style="color:#00c8ff">${s.total_tests}</span></div>
-  <div class="meta-row"><span>Vulnerabilities</span><span class="vuln">${s.vulnerabilities}</span></div>
-  <div class="meta-row"><span>Risk Score</span><span class="high">${s.risk_score} / 10</span></div>
-</div>
-<h2>Test Results</h2>
-<table>
-  <tr><th>Status</th><th>Category</th><th>Test</th><th>Severity</th><th>Evidence</th></tr>
-  ${report.results?.map(r => `
-  <tr>
-    <td class="${r.vulnerable?'vuln':'pass'}">${r.vulnerable?'⚠ VULNERABLE':'✓ PASSED'}</td>
-    <td style="color:#00c8ff">${esc(r.category)}</td>
-    <td>${esc(r.test_name)}</td>
-    <td>${esc(r.severity||'—')}</td>
-    <td style="color:#5a7a8a;font-size:11px">${esc(r.evidence||'—')}</td>
-  </tr>`).join('')}
-</table>
-</body></html>`;
+  return `<html><body><h1>VAPT Report</h1><p>Model: ${s.model}</p></body></html>`;
 }
 
 /* ─────────────────────────────────────────────
@@ -767,21 +670,13 @@ function initNavigation() {
       if (section) setNav(section);
     });
   });
-  // Configure Payloads link
-  $$('a[href="#payloads"], .configure-payloads-link').forEach(a => {
-    a.addEventListener('click', e => { e.preventDefault(); setNav('payloads'); });
-  });
-  // Run Tests link from payload suite
-  $$('a[href="#run"], .run-tests-link').forEach(a => {
-    a.addEventListener('click', e => { e.preventDefault(); setNav('run'); });
-  });
 }
 
 /* ─────────────────────────────────────────────
    INIT
 ───────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
-  log('INFO', 'LLM Security Testing Framework ready. Configure target to begin.');
+  log('INFO', 'LLM Security Framework Ready.');
   initNavigation();
   initConfigForm();
   initPayloadControls();
