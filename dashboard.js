@@ -8,7 +8,7 @@
  * Change BACKEND_URL below after deploying to Render/Railway.
  */
 
-const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = 'https://ethical-hacking-framework-tests.onrender.com';
 
 /* ─────────────────────────────────────────────
    STATE
