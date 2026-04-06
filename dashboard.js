@@ -38,15 +38,14 @@ const state = {
 };
 
 /* ─────────────────────────────────────────────
-   PROVIDER → MODEL MAP
+   UPDATED PROVIDER → MODEL MAP
 ───────────────────────────────────────────── */
 const PROVIDER_MODELS = {
-  openai:    ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-  anthropic: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-  gemini:    ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-pro'],
-  mistral:   ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],
-  cohere:    ['command-r-plus', 'command-r', 'command'],
-  groq:      ['llama3-70b-8192', 'llama3-8b-8192', 'mixtral-8x7b-32768'],
+  openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
+  anthropic: ['claude-3-5-sonnet-latest', 'claude-3-opus-latest', 'claude-3-haiku-20240307'],
+  gemini:    ['gemini-1.5-pro', 'gemini-1.5-flash'],
+  groq:      ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+  mistral:   ['mistral-large-latest', 'pixtral-12b-2409'],
   custom:    ['custom-model'],
 };
 
