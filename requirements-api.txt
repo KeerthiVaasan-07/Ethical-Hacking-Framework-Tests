@@ -1,0 +1,17 @@
+flask
+flask-cors
+python-dotenv
+requests
+httpx
+openai
+anthropic
+google-genai
+mistralai
+ollama
+beautifulsoup4
+pillow
+numpy
+sentence-transformers
+scikit-learn
+transformers
+torch
