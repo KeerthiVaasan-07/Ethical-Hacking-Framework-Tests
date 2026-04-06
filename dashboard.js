@@ -15,7 +15,7 @@ const BACKEND_URL = 'https://ethical-hacking-framework-tests.onrender.com';
 ───────────────────────────────────────────── */
 const state = {
   config: {
-    provider: 'openai',
+    provider: 'groq',
     apiKey: '',
     baseUrl: '',
     model: 'gpt-4o',
