@@ -15,7 +15,7 @@ const BACKEND_URL = 'https://ethical-hacking-framework-tests.onrender.com';
 ───────────────────────────────────────────── */
 const state = {
   config: {
-    provider: 'groq',
+    provider: 'Mistral AI',
     apiKey: '',
     baseUrl: '',
     model: 'gpt-4o',
